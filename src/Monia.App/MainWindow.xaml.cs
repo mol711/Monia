@@ -11,6 +11,9 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Monia.App;
 
@@ -36,6 +39,7 @@ public partial class MainWindow : Window{
             ex is IOException or UnauthorizedAccessException or FormatException or NotSupportedException or ArgumentException){
             // XAMLで指定した初期画像をそのまま表示する。
         }
+
     }
     private void ChooseImage_Click(object sender, RoutedEventArgs e){
         var dialog = new OpenFileDialog{
@@ -168,6 +172,68 @@ public partial class MainWindow : Window{
         {
             e.Cancel = true;
             MessageBox.Show(this, "Moniaを閉じる前に、3Dを終了してください。", "Monia");
+        }
+    }
+    private async void Smile_Click(object sender, RoutedEventArgs e)
+    {
+        await SendExpressionAsync(1);
+    }
+
+    private async void ResetSmile_Click(object sender, RoutedEventArgs e)
+    {
+        await SendExpressionAsync(0);
+    }
+
+    private async Task SendExpressionAsync(byte command)
+    {
+        SmileButton.IsEnabled = false;
+        ResetSmileButton.IsEnabled = false;
+        ExpressionStatus.Text = "Unityに接続中…";
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var pipe = new NamedPipeClientStream(
+                ".", "Monia.Shino.Expression.Test",
+                PipeDirection.InOut, PipeOptions.Asynchronous);
+
+            await pipe.ConnectAsync(timeout.Token);
+
+            ExpressionStatus.Text = "Unityの応答を待っています…";
+            await pipe.WriteAsync(new byte[] { command }, 0, 1, timeout.Token);
+
+            var reply = new byte[1];
+            int received = await pipe.ReadAsync(reply, 0, 1, timeout.Token);
+
+            if (received == 0)
+            {
+                ExpressionStatus.Text = "応答前に接続が閉じました";
+            }
+            else if (reply[0] == 1)
+            {
+                ExpressionStatus.Text = command == 1 ? "笑顔にしました" : "笑顔を解除しました";
+            }
+            else
+            {
+                ExpressionStatus.Text = "Unityが成功を返しませんでした";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ExpressionStatus.Text = "Unityとの通信がタイムアウトしました";
+        }
+        catch (IOException)
+        {
+            ExpressionStatus.Text = "Unityとの通信に失敗しました";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            ExpressionStatus.Text = "パイプへのアクセスが拒否されました";
+        }
+        finally
+        {
+            SmileButton.IsEnabled = true;
+            ResetSmileButton.IsEnabled = true;
         }
     }
 }

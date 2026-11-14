@@ -10,6 +10,7 @@
     <Grid.RowDefinitions>
         <RowDefinition Height="*" />
         <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
     <Image x:Name="WallpaperImage"
@@ -44,5 +45,25 @@
                 IsEnabled="False"
                 Click="StopRenderer_Click" />
     </StackPanel>
+    <StackPanel Grid.Row="2"
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Margin="12,0,12,12">
+    <TextBlock x:Name="ExpressionStatus"
+               Foreground="White"
+               VerticalAlignment="Center"
+               Margin="0,0,12,0" />
+
+    <Button x:Name="SmileButton"
+            Content="笑顔にする"
+            Padding="12,6"
+            Click="Smile_Click" />
+
+    <Button x:Name="ResetSmileButton"
+            Content="笑顔を解除"
+            Margin="8,0,0,0"
+            Padding="12,6"
+            Click="ResetSmile_Click" />
+</StackPanel>
 </Grid>
 </Window>
