@@ -17,11 +17,32 @@
            Source="Assets/DefaultWallpaper.png"
            Stretch="Uniform" />
 
-    <Button Grid.Row="1"
-            Content="画像を選ぶ"
-            HorizontalAlignment="Right"
-            Margin="12"
-            Padding="12,6"
-            Click="ChooseImage_Click" />
+    <StackPanel Grid.Row="1"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Margin="12">
+        <TextBlock x:Name="RendererStatus"
+               Text="3Dは停止中"
+               Foreground="White"
+               VerticalAlignment="Center"
+               Margin="0,0,12,0" />
+
+        <Button Content="画像を選ぶ"
+                Padding="12,6"
+                Click="ChooseImage_Click" />
+
+        <Button x:Name="StartRendererButton"
+                Content="3Dを起動"
+                Margin="8,0,0,0"
+                Padding="12,6"
+                Click="StartRenderer_Click" />
+
+        <Button x:Name="StopRendererButton"
+                Content="3Dを終了"
+                Margin="8,0,0,0"
+                Padding="12,6"
+                IsEnabled="False"
+                Click="StopRenderer_Click" />
+    </StackPanel>
 </Grid>
 </Window>
