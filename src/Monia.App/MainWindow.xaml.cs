@@ -23,6 +23,10 @@ namespace Monia.App;
 
 public partial class MainWindow : Window{
     private Process? rendererProcess;
+    private string? rendererPath;
+    private string? resumeRendererPath;
+    private bool sessionLocked;
+    private bool rendererStopRequested;
 
     public MainWindow(){
         InitializeComponent();
@@ -81,9 +85,9 @@ public partial class MainWindow : Window{
         return image;
     }
 
-    private async void StartRenderer_Click(object sender, RoutedEventArgs e)
+    private void StartRenderer_Click(object sender, RoutedEventArgs e)
     {
-        if (rendererProcess is not null)
+        if (sessionLocked || rendererProcess is not null)
         {
             return;
         }
@@ -100,10 +104,20 @@ public partial class MainWindow : Window{
             return;
         }
 
+        _ = RunRendererAsync(dialog.FileName);
+    }
+
+    private async Task RunRendererAsync(string executablePath)
+    {
+        if (sessionLocked || rendererProcess is not null)
+        {
+            return;
+        }
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = dialog.FileName,
-            WorkingDirectory = Path.GetDirectoryName(dialog.FileName)!,
+            FileName = executablePath,
+            WorkingDirectory = Path.GetDirectoryName(executablePath)!,
             UseShellExecute = false
         };
 
@@ -125,6 +139,7 @@ public partial class MainWindow : Window{
         }
 
         rendererProcess = process;
+        rendererPath = executablePath;
         StartRendererButton.IsEnabled = false;
         StopRendererButton.IsEnabled = true;
         RendererStatus.Text = "3Dプロセスが実行中";
@@ -141,27 +156,45 @@ public partial class MainWindow : Window{
         {
             process.Dispose();
             rendererProcess = null;
-            StartRendererButton.IsEnabled = true;
+            rendererPath = null;
+            rendererStopRequested = false;
+            StartRendererButton.IsEnabled = !sessionLocked;
             StopRendererButton.IsEnabled = false;
+            TryResumeRenderer();
         }
     }
 
     private void StopRenderer_Click(object sender, RoutedEventArgs e)
     {
-        if (rendererProcess is null || rendererProcess.HasExited)
+        resumeRendererPath = null;
+        RequestRendererStop();
+    }
+
+    private bool RequestRendererStop()
+    {
+        if (rendererProcess is null || rendererStopRequested)
         {
-            return;
+            return false;
         }
 
         try
         {
-            RendererStatus.Text = rendererProcess.CloseMainWindow()
+            if (rendererProcess.HasExited)
+            {
+                return false;
+            }
+
+            rendererStopRequested = rendererProcess.CloseMainWindow();
+            RendererStatus.Text = rendererStopRequested
                 ? "3Dの終了を待っています"
                 : "Unityのウィンドウを確認してください";
+            return rendererStopRequested;
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
-            // Unityが同時に閉じたときは、終了の待機側で画面を更新する。
+            RendererStatus.Text = "3Dに終了を要求できませんでした";
+            Debug.WriteLine(ex.Message);
+            return false;
         }
     }
 
@@ -259,10 +292,50 @@ public partial class MainWindow : Window{
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException){
             Debug.WriteLine($"セッションログを書き込めませんでした: {ex.Message}");
         }
+
+        _ = Dispatcher.InvokeAsync(() => ApplySessionChange(e.Reason));
+    }
+
+    private void ApplySessionChange(SessionSwitchReason reason)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (reason == SessionSwitchReason.SessionLock)
+        {
+            sessionLocked = true;
+            StartRendererButton.IsEnabled = false;
+
+            if (rendererPath is string path && RequestRendererStop())
+            {
+                resumeRendererPath = path;
+            }
+
+            return;
+        }
+
+        sessionLocked = false;
+        StartRendererButton.IsEnabled = rendererProcess is null;
+        TryResumeRenderer();
+    }
+
+    private void TryResumeRenderer()
+    {
+        if (sessionLocked || rendererProcess is not null
+            || resumeRendererPath is not string path)
+        {
+            return;
+        }
+
+        resumeRendererPath = null;
+        _ = RunRendererAsync(path);
     }
 
     protected override void OnClosed(EventArgs e){
         SystemEvents.SessionSwitch -= OnSessionSwitch;
+        resumeRendererPath = null;
         base.OnClosed(e);
     }
 }
