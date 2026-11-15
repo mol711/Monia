@@ -26,6 +26,9 @@ public partial class MainWindow : Window{
     private string? rendererPath;
     private string? resumeRendererPath;
     private bool sessionLocked;
+    private readonly SemaphoreSlim wallpaperCommandGate = new(1);
+    private bool wallpaperRequested;
+    private bool wallpaperApplied;
     private bool rendererStopRequested;
 
     public MainWindow(){
@@ -277,6 +280,12 @@ public partial class MainWindow : Window{
             return;
         }
 
+        WriteSessionLog(e.Reason.ToString());
+        _ = Dispatcher.InvokeAsync(() => ApplySessionChange(e.Reason));
+    }
+
+    private static void WriteSessionLog(string message)
+    {
         string directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Monia");
@@ -287,13 +296,11 @@ public partial class MainWindow : Window{
             Directory.CreateDirectory(directory);
             File.AppendAllText(
                 logPath,
-                $"{DateTimeOffset.Now:O} {e.Reason}{Environment.NewLine}");
+                $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException){
             Debug.WriteLine($"セッションログを書き込めませんでした: {ex.Message}");
         }
-
-        _ = Dispatcher.InvokeAsync(() => ApplySessionChange(e.Reason));
     }
 
     private void ApplySessionChange(SessionSwitchReason reason)
@@ -306,6 +313,7 @@ public partial class MainWindow : Window{
         if (reason == SessionSwitchReason.SessionLock)
         {
             sessionLocked = true;
+            _ = UpdateWallpaperAsync(locked: true);
             StartRendererButton.IsEnabled = false;
 
             if (rendererPath is string path && RequestRendererStop())
@@ -317,6 +325,7 @@ public partial class MainWindow : Window{
         }
 
         sessionLocked = false;
+        _ = UpdateWallpaperAsync(locked: false);
         StartRendererButton.IsEnabled = rendererProcess is null;
         TryResumeRenderer();
     }
@@ -340,20 +349,67 @@ public partial class MainWindow : Window{
     }
     private async void ApplyWallpaper_Click(object sender, RoutedEventArgs e)
     {
-        await RunWallpaperCommandAsync(apply: true);
+        await UpdateWallpaperAsync(locked: false, requested: true);
     }
 
     private async void CloseWallpaper_Click(object sender, RoutedEventArgs e)
     {
-        await RunWallpaperCommandAsync(apply: false);
+        await UpdateWallpaperAsync(locked: sessionLocked, requested: false);
+    }
+    private async Task UpdateWallpaperAsync(bool locked, bool? requested = null)
+    {
+        await wallpaperCommandGate.WaitAsync();
+
+        try
+        {
+            if (!IsLoaded)
+            {
+                return;
+            }
+
+            if (requested is bool manualChoice)
+            {
+                wallpaperRequested = manualChoice;
+                locked = sessionLocked;
+
+                // 手動で押した場合はLivelyに操作を送る。
+                // ロック中の手動適用は解除後まで待つ。
+                if (manualChoice && locked)
+                {
+                    return;
+                }
+
+                if (await RunWallpaperCommandAsync(manualChoice))
+                {
+                    wallpaperApplied = manualChoice;
+                }
+                else if (manualChoice)
+                {
+                    wallpaperRequested = wallpaperApplied;
+                }
+
+                return;
+            }
+
+            bool shouldApply = wallpaperRequested && !locked;
+            if (shouldApply != wallpaperApplied &&
+                await RunWallpaperCommandAsync(shouldApply))
+            {
+                wallpaperApplied = shouldApply;
+            }
+        }
+        finally
+        {
+            wallpaperCommandGate.Release();
+        }
     }
 
-    private async Task RunWallpaperCommandAsync(bool apply)
+    private async Task<bool> RunWallpaperCommandAsync(bool apply)
     {
         if (apply && rendererProcess is not null)
         {
             WallpaperStatus.Text = "先に通常ウィンドウの3Dを終了してください";
-            return;
+            return false;
         }
 
         string? livelyExe = Environment.GetEnvironmentVariable("MONIA_LIVELY_EXE");
@@ -363,7 +419,7 @@ public partial class MainWindow : Window{
         if (livelyExe is null || !File.Exists(livelyExe))
         {
             WallpaperStatus.Text = "Lively.exeの場所を確認してください";
-            return;
+            return false;
         }
 
         var startInfo = new ProcessStartInfo
@@ -381,7 +437,7 @@ public partial class MainWindow : Window{
                 !File.Exists(Path.Combine(wallpaperFolder, "LivelyInfo.json")))
             {
                 WallpaperStatus.Text = "壁紙の登録フォルダーを確認してください";
-                return;
+                return false;
             }
 
             startInfo.ArgumentList.Add("--file");
@@ -394,6 +450,8 @@ public partial class MainWindow : Window{
         ApplyWallpaperButton.IsEnabled = false;
         CloseWallpaperButton.IsEnabled = false;
         WallpaperStatus.Text = "Livelyに指示を送っています…";
+        string operation = apply ? "setwp" : "closewp";
+        WriteSessionLog($"Lively {operation}: 開始");
 
         try
         {
@@ -401,23 +459,31 @@ public partial class MainWindow : Window{
             if (command is null)
             {
                 WallpaperStatus.Text = "Livelyのコマンドを起動できませんでした";
-                return;
+                WriteSessionLog($"Lively {operation}: 起動失敗");
+                return false;
             }
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await command.WaitForExitAsync(timeout.Token);
 
-            WallpaperStatus.Text = command.ExitCode == 0
+            int exitCode = command.ExitCode;
+            WriteSessionLog($"Lively {operation}: 終了コード {exitCode}");
+            WallpaperStatus.Text = exitCode == 0
                 ? "デスクトップで結果を確認してください"
-                : $"Livelyコマンドの終了コード: {command.ExitCode}";
+                : $"Livelyコマンドの終了コード: {exitCode}";
+            return exitCode == 0;
         }
         catch (Win32Exception ex)
         {
             WallpaperStatus.Text = $"Livelyを起動できませんでした: {ex.Message}";
+            WriteSessionLog($"Lively {operation}: 起動失敗 ({ex.NativeErrorCode})");
+            return false;
         }
         catch (OperationCanceledException)
         {
             WallpaperStatus.Text = "Livelyの処理状況を確認してください";
+            WriteSessionLog($"Lively {operation}: 待機タイムアウト");
+            return false;
         }
         finally
         {
