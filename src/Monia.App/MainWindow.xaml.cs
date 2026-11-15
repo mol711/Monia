@@ -338,4 +338,91 @@ public partial class MainWindow : Window{
         resumeRendererPath = null;
         base.OnClosed(e);
     }
+    private async void ApplyWallpaper_Click(object sender, RoutedEventArgs e)
+    {
+        await RunWallpaperCommandAsync(apply: true);
+    }
+
+    private async void CloseWallpaper_Click(object sender, RoutedEventArgs e)
+    {
+        await RunWallpaperCommandAsync(apply: false);
+    }
+
+    private async Task RunWallpaperCommandAsync(bool apply)
+    {
+        if (apply && rendererProcess is not null)
+        {
+            WallpaperStatus.Text = "先に通常ウィンドウの3Dを終了してください";
+            return;
+        }
+
+        string? livelyExe = Environment.GetEnvironmentVariable("MONIA_LIVELY_EXE");
+        string? wallpaperFolder =
+            Environment.GetEnvironmentVariable("MONIA_LIVELY_WALLPAPER_FOLDER");
+
+        if (livelyExe is null || !File.Exists(livelyExe))
+        {
+            WallpaperStatus.Text = "Lively.exeの場所を確認してください";
+            return;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = livelyExe,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        startInfo.ArgumentList.Add(apply ? "setwp" : "closewp");
+
+        if (apply)
+        {
+            if (wallpaperFolder is null ||
+                !File.Exists(Path.Combine(wallpaperFolder, "LivelyInfo.json")))
+            {
+                WallpaperStatus.Text = "壁紙の登録フォルダーを確認してください";
+                return;
+            }
+
+            startInfo.ArgumentList.Add("--file");
+            startInfo.ArgumentList.Add(wallpaperFolder);
+        }
+
+        startInfo.ArgumentList.Add("--monitor");
+        startInfo.ArgumentList.Add("1");
+
+        ApplyWallpaperButton.IsEnabled = false;
+        CloseWallpaperButton.IsEnabled = false;
+        WallpaperStatus.Text = "Livelyに指示を送っています…";
+
+        try
+        {
+            using Process? command = Process.Start(startInfo);
+            if (command is null)
+            {
+                WallpaperStatus.Text = "Livelyのコマンドを起動できませんでした";
+                return;
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await command.WaitForExitAsync(timeout.Token);
+
+            WallpaperStatus.Text = command.ExitCode == 0
+                ? "デスクトップで結果を確認してください"
+                : $"Livelyコマンドの終了コード: {command.ExitCode}";
+        }
+        catch (Win32Exception ex)
+        {
+            WallpaperStatus.Text = $"Livelyを起動できませんでした: {ex.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            WallpaperStatus.Text = "Livelyの処理状況を確認してください";
+        }
+        finally
+        {
+            ApplyWallpaperButton.IsEnabled = true;
+            CloseWallpaperButton.IsEnabled = true;
+        }
+    }
 }

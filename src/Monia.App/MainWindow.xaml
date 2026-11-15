@@ -11,6 +11,7 @@
         <RowDefinition Height="*" />
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
     <Image x:Name="WallpaperImage"
@@ -64,6 +65,26 @@
             Margin="8,0,0,0"
             Padding="12,6"
             Click="ResetSmile_Click" />
+</StackPanel>
+<StackPanel Grid.Row="3"
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Margin="12,0,12,12">
+    <TextBlock x:Name="WallpaperStatus"
+               Foreground="White"
+               VerticalAlignment="Center"
+               Margin="0,0,12,0" />
+
+    <Button x:Name="ApplyWallpaperButton"
+            Content="壁紙を適用"
+            Padding="12,6"
+            Click="ApplyWallpaper_Click" />
+
+    <Button x:Name="CloseWallpaperButton"
+            Content="壁紙を解除"
+            Margin="8,0,0,0"
+            Padding="12,6"
+            Click="CloseWallpaper_Click" />
 </StackPanel>
 </Grid>
 </Window>
