@@ -26,6 +26,7 @@ public partial class MainWindow : Window{
 
     public MainWindow(){
         InitializeComponent();
+        SystemEvents.SessionSwitch += OnSessionSwitch;
 
         string? imagePath = SettingsStore.LoadImagePath();
         if (string.IsNullOrWhiteSpace(imagePath)){
@@ -235,5 +236,33 @@ public partial class MainWindow : Window{
             SmileButton.IsEnabled = true;
             ResetSmileButton.IsEnabled = true;
         }
+    }
+
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e){
+        if (e.Reason is not (SessionSwitchReason.SessionLock
+            or SessionSwitchReason.SessionUnlock)){
+            return;
+        }
+
+        string directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Monia");
+
+        string logPath = Path.Combine(directory, "session.log");
+
+        try{
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(
+                logPath,
+                $"{DateTimeOffset.Now:O} {e.Reason}{Environment.NewLine}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException){
+            Debug.WriteLine($"セッションログを書き込めませんでした: {ex.Message}");
+        }
+    }
+
+    protected override void OnClosed(EventArgs e){
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
+        base.OnClosed(e);
     }
 }
