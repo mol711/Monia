@@ -1,0 +1,31 @@
+# .NET build output
+/src/Monia.App/bin/
+/src/Monia.App/obj/
+
+# Unity-generated caches, local settings and build output
+/src/comparison/unity/[Ll]ibrary/
+/src/comparison/unity/[Tt]emp/
+/src/comparison/unity/[Oo]bj/
+/src/comparison/unity/[Ll]ogs/
+/src/comparison/unity/[Uu]ser[Ss]ettings/
+/src/comparison/unity/[Bb]uild/
+/src/comparison/unity/[Bb]uilds/
+/src/comparison/unity/[Mm]emoryCaptures/
+/src/comparison/unity/[Rr]ecordings/
+/src/comparison/unity/.vs/
+/src/comparison/unity/.idea/
+/src/comparison/unity/*.csproj
+/src/comparison/unity/*.sln
+/src/comparison/unity/*.slnx
+/src/comparison/unity/*.user
+/src/comparison/unity/*.unitypackage
+/src/comparison/unity/Assets/AssetStoreTools*
+
+# Local-only licensed assets and their folder metadata
+/src/comparison/unity/Assets/PrivateAssets/
+/src/comparison/unity/Assets/PrivateAssets.meta
+
+# Local-only builds and crash reports
+/private-builds/
+/src/comparison/unity/sysinfo.txt
+/src/comparison/unity/*.log
